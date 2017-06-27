@@ -326,7 +326,13 @@ public class AppboyNotificationUtils {
 
     // Get the power manager for the wake lock.
     PowerManager powerManager = (PowerManager) context.getSystemService(Context.POWER_SERVICE);
-    PowerManager.WakeLock wakeLock = powerManager.newWakeLock(PowerManager.FULL_WAKE_LOCK | PowerManager.ACQUIRE_CAUSES_WAKEUP, TAG);
+
+    // Original code
+    // PowerManager.WakeLock wakeLock = powerManager.newWakeLock(PowerManager.FULL_WAKE_LOCK | PowerManager.ACQUIRE_CAUSES_WAKEUP, TAG);
+
+    // Use PARTIAL_WAKE_LOCK, screen will not be turned on upon receiving notification
+    PowerManager.WakeLock wakeLock = powerManager.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, TAG);
+
     // Acquire the wake lock for some negligible time, then release it. We just want to wake the screen
     // and not take up more CPU power than necessary.
     wakeLock.acquire();
