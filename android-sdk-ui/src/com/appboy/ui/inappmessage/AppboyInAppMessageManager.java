@@ -1,6 +1,7 @@
 package com.appboy.ui.inappmessage;
 
 import android.app.Activity;
+import android.app.Application;
 import android.content.Context;
 import android.content.pm.ActivityInfo;
 import android.content.res.Configuration;
@@ -10,7 +11,6 @@ import android.view.animation.Animation;
 
 import com.appboy.Appboy;
 import com.appboy.Constants;
-import com.appboy.IAppboyNavigator;
 import com.appboy.enums.inappmessage.Orientation;
 import com.appboy.events.IEventSubscriber;
 import com.appboy.events.InAppMessageEvent;
@@ -20,7 +20,6 @@ import com.appboy.models.InAppMessageHtmlFull;
 import com.appboy.models.InAppMessageModal;
 import com.appboy.models.InAppMessageSlideup;
 import com.appboy.support.AppboyLogger;
-import com.appboy.ui.AppboyNavigator;
 import com.appboy.ui.inappmessage.factories.AppboyFullViewFactory;
 import com.appboy.ui.inappmessage.factories.AppboyHtmlFullViewFactory;
 import com.appboy.ui.inappmessage.factories.AppboyInAppMessageAnimationFactory;
@@ -88,7 +87,6 @@ public final class AppboyInAppMessageManager {
   private static volatile AppboyInAppMessageManager sInstance = null;
 
   private final Stack<IInAppMessage> mInAppMessageStack = new Stack<IInAppMessage>();
-  private final IAppboyNavigator mDefaultAppboyNavigator = new AppboyNavigator();
   private Activity mActivity;
   private IEventSubscriber<InAppMessageEvent> mInAppMessageEventSubscriber;
   private IInAppMessageViewFactory mCustomInAppMessageViewFactory;
@@ -136,12 +134,12 @@ public final class AppboyInAppMessageManager {
    * Ensures the InAppMessageManager is subscribed in-app message events if not already subscribed.
    * Before this method gets called, the InAppMessageManager is not subscribed to in-app message events
    * and cannot display them. Every call to registerInAppMessageManager() calls this method.
-   *
+   * <p/>
    * If events with triggers are logged before the first call to registerInAppMessageManager(), then the
    * corresponding in-app message won't display. Thus, if logging events with triggers before the first call
    * to registerInAppMessageManager(), then call this method to ensure that in-app message events
    * are correctly handled by the AppboyInAppMessageManager.
-   *
+   * <p/>
    * For example, if logging custom events with triggers in your first activity's onCreate(), be sure
    * to call this method manually beforehand so that the in-app message will get displayed by the time
    * registerInAppMessageManager() gets called.
@@ -162,7 +160,10 @@ public final class AppboyInAppMessageManager {
    * <p/>
    * Important note: Every Activity must call registerInAppMessageManager in the onResume lifecycle
    * method, otherwise in-app messages may be lost!
-   *
+   * <p/>
+   * This method also calls {@link AppboyInAppMessageManager#ensureSubscribedToInAppMessageEvents(Context)}.
+   * To be sure that no in-app messages are lost, you should call {@link AppboyInAppMessageManager#ensureSubscribedToInAppMessageEvents(Context)} as early
+   * as possible in your app, preferably in your {@link Application#onCreate()}.
    * @param activity The current Activity.
    */
   public void registerInAppMessageManager(Activity activity) {
@@ -348,44 +349,6 @@ public final class AppboyInAppMessageManager {
   }
 
   /**
-   * Hides any currently displaying in-app message.
-   *
-   * @deprecated Use {@link #hideCurrentlyDisplayingInAppMessage(boolean)}
-   *
-   * @param animate   whether to animate the message out of view. Note that in-app message animation
-   *                  is configurable on the in-app message model itself and should be configured
-   *                  there instead.
-   * @param dismissed whether the message was dismissed by the user. If dismissed is true,
-   *                  IInAppMessageViewLifecycleListener.onDismissed() will be called on the current
-   *                  IInAppMessageViewLifecycleListener.
-   */
-  @Deprecated
-  public void hideCurrentInAppMessage(boolean animate, boolean dismissed) {
-    IInAppMessageViewWrapper inAppMessageWrapperView = mInAppMessageViewWrapper;
-    if (inAppMessageWrapperView != null) {
-      IInAppMessage inAppMessage = inAppMessageWrapperView.getInAppMessage();
-      if (inAppMessage != null) {
-        inAppMessage.setAnimateOut(animate);
-      }
-      hideCurrentlyDisplayingInAppMessage(dismissed);
-    }
-  }
-
-  /**
-   * Hides any currently displaying in-app message.
-   *
-   * @deprecated Use {@link #hideCurrentlyDisplayingInAppMessage(boolean)}
-   *
-   * @param animate whether to animate the message out of view. Note that in-app message animation
-   *                  is configurable on the in-app message model itself and should be configured
-   *                  there instead.
-   */
-  @Deprecated
-  public void hideCurrentInAppMessage(boolean animate) {
-    hideCurrentInAppMessage(animate, false);
-  }
-
-  /**
    * Hides any currently displaying in-app message. Note that in-app message animation
    * is configurable on the in-app message model itself and should be configured there.
    *
@@ -410,11 +373,6 @@ public final class AppboyInAppMessageManager {
 
   public IHtmlInAppMessageActionListener getHtmlInAppMessageActionListener() {
     return mCustomHtmlInAppMessageActionListener != null ? mCustomHtmlInAppMessageActionListener : mDefaultHtmlInAppMessageActionListener;
-  }
-
-  public IAppboyNavigator getAppboyNavigator() {
-    IAppboyNavigator customAppboyNavigator = Appboy.getInstance(mActivity).getAppboyNavigator();
-    return customAppboyNavigator != null ? customAppboyNavigator : mDefaultAppboyNavigator;
   }
 
   public Activity getActivity() {
@@ -459,7 +417,7 @@ public final class AppboyInAppMessageManager {
     // Note:  for mDisplayingInAppMessage to be accurate it requires this method does not exit anywhere but the at the end
     // of this try/catch when we know whether we are successfully displaying the IAM or not.
     if (!mDisplayingInAppMessage.compareAndSet(false, true)) {
-      AppboyLogger.d(TAG, "A in-app message is currently being displayed.  Adding in-app message back on the stack.");
+      AppboyLogger.d(TAG, "A in-app message is currently being displayed. Adding in-app message back on the stack.");
       mInAppMessageStack.push(inAppMessage);
       return false;
     }
@@ -535,7 +493,7 @@ public final class AppboyInAppMessageManager {
   /**
    *
    * For in-app messages that have a preferred orientation, locks the screen orientation and
-   * returns true if the screen is currently in the preferred orientation.  If the screen is not
+   * returns true if the screen is currently in the preferred orientation. If the screen is not
    * currently in the preferred orientation, returns false.
    *
    * Always returns true for tablets, regardless of current orientation.

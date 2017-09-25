@@ -7,7 +7,6 @@ import android.widget.ImageView;
 import com.appboy.Constants;
 import com.appboy.models.cards.BannerImageCard;
 import com.appboy.ui.R;
-import com.appboy.ui.actions.ActionFactory;
 import com.appboy.ui.actions.IAction;
 import com.facebook.drawee.view.SimpleDraweeView;
 
@@ -61,13 +60,13 @@ public class BannerImageCardView extends BaseCardView<BannerImageCard> {
       setImageViewToUrl(mImage, card.getImageUrl(), mAspectRatio, respectAspectRatio);
     }
 
-    mCardAction = ActionFactory.createUriAction(getContext(), card.getUrl());
+    mCardAction = getUriActionForCard(card);
 
     setOnClickListener(new OnClickListener() {
       @Override
       public void onClick(View view) {
         // We don't set isRead here (like we do in other card views)
-        // because Banner Cards don't have read/unread indicators.  They are all images, so there's
+        // because Banner Cards don't have read/unread indicators. They are all images, so there's
         // no free space to put the indicator.
         handleCardClick(mContext,card, mCardAction, TAG, false);
       }

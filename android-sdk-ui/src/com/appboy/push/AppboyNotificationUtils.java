@@ -6,7 +6,6 @@ import android.app.AlarmManager;
 import android.app.Notification;
 import android.app.NotificationManager;
 import android.app.PendingIntent;
-import android.content.ActivityNotFoundException;
 import android.content.Context;
 import android.content.Intent;
 import android.content.res.Resources;
@@ -18,20 +17,25 @@ import android.os.Bundle;
 import android.os.PowerManager;
 import android.os.SystemClock;
 import android.support.v4.app.NotificationCompat;
-import android.support.v4.app.TaskStackBuilder;
 import android.util.Log;
 
 import com.appboy.Appboy;
 import com.appboy.AppboyAdmReceiver;
 import com.appboy.AppboyGcmReceiver;
+import com.appboy.AppboyInternal;
 import com.appboy.Constants;
 import com.appboy.IAppboyNotificationFactory;
 import com.appboy.configuration.AppboyConfigurationProvider;
+import com.appboy.enums.Channel;
 import com.appboy.support.AppboyImageUtils;
 import com.appboy.support.AppboyLogger;
 import com.appboy.support.IntentUtils;
 import com.appboy.support.PermissionUtils;
 import com.appboy.support.StringUtils;
+import com.appboy.ui.AppboyNavigator;
+import com.appboy.ui.actions.ActionFactory;
+import com.appboy.ui.actions.UriAction;
+import com.appboy.ui.support.UriUtils;
 
 import org.json.JSONException;
 import org.json.JSONObject;
@@ -45,27 +49,7 @@ public class AppboyNotificationUtils {
   public static final String APPBOY_NOTIFICATION_RECEIVED_SUFFIX = ".intent.APPBOY_PUSH_RECEIVED";
 
   /**
-   * Get the Appboy extras Bundle from the notification extras. Notification extras must be in a Bundle.
-   * <p/>
-   * Amazon ADM recursively flattens all JSON messages, so we just return the original bundle.
-   *
-   * @deprecated use {@link AppboyNotificationUtils#getAppboyExtrasWithoutPreprocessing(android.os.Bundle) instead.
-   * Note that notification extras must be in GCM/ADM format instead of a Bundle.}
-   */
-  @Deprecated
-  public static Bundle getAppboyExtras(Bundle notificationExtras) {
-    if (notificationExtras == null) {
-      return null;
-    }
-    if (!Constants.IS_AMAZON) {
-      return notificationExtras.getBundle(Constants.APPBOY_PUSH_EXTRAS_KEY);
-    } else {
-      return notificationExtras;
-    }
-  }
-
-  /**
-   * Handles a push notification click.  Called by GCM/ADM receiver when an
+   * Handles a push notification click. Called by GCM/ADM receiver when an
    * Appboy push notification click intent is received.
    * <p/>
    * See {@link #logNotificationOpened} and {@link #sendNotificationOpenedBroadcast}
@@ -104,37 +88,24 @@ public class AppboyNotificationUtils {
     extras.putString(AppboyGcmReceiver.CAMPAIGN_ID_KEY, intent.getStringExtra(AppboyGcmReceiver.CAMPAIGN_ID_KEY));
     extras.putString(SOURCE_KEY, Constants.APPBOY);
 
-    // get main activity intent.
-    Intent startActivityIntent = context.getPackageManager().getLaunchIntentForPackage(context.getPackageName());
-    startActivityIntent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP);
-    if (extras != null) {
-      startActivityIntent.putExtras(extras);
-    }
-
     // If a deep link exists, start an ACTION_VIEW intent pointing at the deep link.
     // The intent returned from getStartActivityIntent() is placed on the back stack.
     // Otherwise, start the intent defined in getStartActivityIntent().
     String deepLink = intent.getStringExtra(Constants.APPBOY_PUSH_DEEP_LINK_KEY);
     if (!StringUtils.isNullOrBlank(deepLink)) {
       Log.d(TAG, String.format("Found a deep link %s.", deepLink));
-      Intent uriIntent = new Intent(Intent.ACTION_VIEW, Uri.parse(deepLink))
-          .putExtras(extras);
-      TaskStackBuilder stackBuilder = TaskStackBuilder.create(context);
-      stackBuilder.addNextIntent(startActivityIntent);
-      stackBuilder.addNextIntent(uriIntent);
-      try {
-        stackBuilder.startActivities(extras);
-      } catch (ActivityNotFoundException e) {
-        Log.w(TAG, String.format("Could not find appropriate activity to open for deep link %s.", deepLink));
-      }
+      boolean useWebView = "true".equalsIgnoreCase(intent.getStringExtra(Constants.APPBOY_PUSH_OPEN_URI_IN_WEBVIEW_KEY));
+      Log.d(TAG, "Use webview set to: " + useWebView);
+      UriAction uriAction = ActionFactory.createUriActionFromUrlString(deepLink, extras, useWebView, Channel.PUSH);
+      AppboyNavigator.getAppboyNavigator().gotoUri(context, uriAction);
     } else {
       Log.d(TAG, "Push notification had no deep link. Opening main activity.");
-      context.startActivity(startActivityIntent);
+      context.startActivity(UriUtils.getMainActivityIntent(context, extras));
     }
   }
 
   /**
-   * Get the Appboy extras Bundle from the notification extras.  Notification extras must be in GCM/ADM format.
+   * Get the Appboy extras Bundle from the notification extras. Notification extras must be in GCM/ADM format.
    *
    * @param notificationExtras Notification extras as provided by GCM/ADM.
    * @return Returns the Appboy extras Bundle from the notification extras. Amazon ADM recursively flattens all JSON messages,
@@ -168,7 +139,7 @@ public class AppboyNotificationUtils {
   }
 
   /**
-   * Parses the JSON into a bundle.  The JSONObject parsed from the input string must be a flat
+   * Parses the JSON into a bundle. The JSONObject parsed from the input string must be a flat
    * dictionary with all string values.
    */
   public static Bundle parseJSONStringDictionaryIntoBundle(String jsonStringDictionary) {
@@ -229,6 +200,27 @@ public class AppboyNotificationUtils {
   }
 
   /**
+   * Requests a geofence refresh from Appboy if appropriate based on the payload of the push notification.
+   *
+   * @param context
+   * @param notificationExtras Notification extras as provided by GCM/ADM.
+   * @return True iff a geofence refresh was requested from Appboy.
+   */
+  public static boolean requestGeofenceRefreshIfAppropriate(Context context, Bundle notificationExtras) {
+    if (notificationExtras.containsKey(Constants.APPBOY_PUSH_SYNC_GEOFENCES_KEY)) {
+      if (Boolean.parseBoolean(notificationExtras.getString(Constants.APPBOY_PUSH_SYNC_GEOFENCES_KEY))) {
+        AppboyInternal.requestGeofenceRefresh(context, true);
+        return true;
+      } else {
+        AppboyLogger.d(TAG, "Geofence sync key was false. Not syncing geofences.");
+      }
+    } else {
+      AppboyLogger.d(TAG, "Geofence sync key not included in push payload. Not syncing geofences.");
+    }
+    return false;
+  }
+
+  /**
    * Creates an alarm which will issue a broadcast to cancel the notification specified by the given notificationId after the given duration.
    */
   public static void setNotificationDurationAlarm(Context context, Class<?> thisClass, int notificationId, int durationInMillis) {
@@ -268,11 +260,11 @@ public class AppboyNotificationUtils {
         String messageKey = AppboyNotificationUtils.bundleOptString(notificationExtras, Constants.APPBOY_PUSH_TITLE_KEY, "")
             + AppboyNotificationUtils.bundleOptString(notificationExtras, Constants.APPBOY_PUSH_CONTENT_KEY, "");
         int notificationId = messageKey.hashCode();
-        AppboyLogger.d(TAG, "Message without notification id provided in the extras bundle received.  Using a hash of the message: " + notificationId);
+        AppboyLogger.d(TAG, "Message without notification id provided in the extras bundle received. Using a hash of the message: " + notificationId);
         return notificationId;
       }
     } else {
-      AppboyLogger.d(TAG, String.format("Message without extras bundle received.  Using default notification id: " + Constants.APPBOY_DEFAULT_NOTIFICATION_ID));
+      AppboyLogger.d(TAG, String.format("Message without extras bundle received. Using default notification id: " + Constants.APPBOY_DEFAULT_NOTIFICATION_ID));
       return Constants.APPBOY_DEFAULT_NOTIFICATION_ID;
     }
   }
@@ -309,7 +301,7 @@ public class AppboyNotificationUtils {
   /**
    * This method will wake the device using a wake lock if the WAKE_LOCK permission is present in the
    * manifest. If the permission is not present, this does nothing. If the screen is already on,
-   * and the permission is present, this does nothing.  If the priority of the incoming notification
+   * and the permission is present, this does nothing. If the priority of the incoming notification
    * is min, this does nothing.
    */
   public static boolean wakeScreenIfHasPermission(Context context, Bundle notificationExtras) {
@@ -405,7 +397,7 @@ public class AppboyNotificationUtils {
 
   /**
    * Sets the icon used in the notification bar itself.
-   * If a drawable defined in appboy.xml is found, we use that.  Otherwise, fall back to the application icon.
+   * If a drawable defined in appboy.xml is found, we use that. Otherwise, fall back to the application icon.
    *
    * @return the resource id of the small icon to be used.
    */
@@ -423,8 +415,8 @@ public class AppboyNotificationUtils {
   }
 
   /**
-   * Set large icon for devices on Honeycomb and above.  We use the large icon URL if it exists in
-   * the notificationExtras.  Otherwise we search for a drawable defined in appboy.xml.  If that
+   * Set large icon for devices on Honeycomb and above. We use the large icon URL if it exists in
+   * the notificationExtras. Otherwise we search for a drawable defined in appboy.xml. If that
    * doesn't exists, we do nothing.
    * <p/>
    * Supported HoneyComb+.
@@ -464,16 +456,6 @@ public class AppboyNotificationUtils {
 
     AppboyLogger.d(TAG, "Large icon not set for notification");
     return false;
-  }
-
-  /**
-   * @Deprecated use {@link #setLargeIconIfPresentAndSupported(Context, AppboyConfigurationProvider, NotificationCompat.Builder, Bundle)}
-   */
-  @Deprecated
-  public static boolean setLargeIconIfPresentAndSupported(
-      Context context, AppboyConfigurationProvider appConfigurationProvider,
-      NotificationCompat.Builder notificationBuilder) {
-    return setLargeIconIfPresentAndSupported(context, appConfigurationProvider, notificationBuilder, null);
   }
 
   /**
@@ -556,7 +538,7 @@ public class AppboyNotificationUtils {
   }
 
   /**
-   * Set accent color for devices on Lollipop and above.  We use the push-specific accent color if it exists in the notificationExtras,
+   * Set accent color for devices on Lollipop and above. We use the push-specific accent color if it exists in the notificationExtras,
    * otherwise we search for a default set in appboy.xml or don't set the color at all (and the system notification gray
    * default is used).
    * <p/>
@@ -576,7 +558,7 @@ public class AppboyNotificationUtils {
   }
 
   /**
-   * Set category for devices on Lollipop and above.  Category is one of the predefined notification categories (see the CATEGORY_* constants in Notification)
+   * Set category for devices on Lollipop and above. Category is one of the predefined notification categories (see the CATEGORY_* constants in Notification)
    * that best describes a Notification. May be used by the system for ranking and filtering.
    * <p/>
    * Supported Lollipop+.
@@ -634,7 +616,7 @@ public class AppboyNotificationUtils {
    * Supported Lollipop+.
    */
   public static void setPublicVersionIfPresentAndSupported(Context context, AppboyConfigurationProvider appboyConfigurationProvider,
-      NotificationCompat.Builder notificationBuilder, Bundle notificationExtras) {
+                                                           NotificationCompat.Builder notificationBuilder, Bundle notificationExtras) {
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
       if (notificationExtras != null && notificationExtras.containsKey(Constants.APPBOY_PUSH_PUBLIC_NOTIFICATION_KEY)) {
         String publicNotificationExtrasString = notificationExtras.getString(Constants.APPBOY_PUSH_PUBLIC_NOTIFICATION_KEY);
@@ -684,7 +666,7 @@ public class AppboyNotificationUtils {
   }
 
   /**
-   * Handles a request to cancel a push notification in the notification center.  Called by GCM/ADM receiver when an
+   * Handles a request to cancel a push notification in the notification center. Called by GCM/ADM receiver when an
    * Appboy cancel notification intent is received.
    * <p/>
    * Any existing notification in the notification center with the integer Id specified in the
@@ -693,7 +675,7 @@ public class AppboyNotificationUtils {
    * If no Id is found, the defaut Appboy notification Id is used.
    *
    * @param context
-   * @param intent  the cancel notification intent
+   * @param intent the cancel notification intent
    */
   public static void handleCancelNotificationAction(Context context, Intent intent) {
     try {
@@ -783,7 +765,7 @@ public class AppboyNotificationUtils {
    * The broadcast message action is <host-app-package-name>.intent.APPBOY_NOTIFICATION_OPENED.
    *
    * @param context
-   * @param intent  the internal notification clicked intent constructed in
+   * @param intent the internal notification clicked intent constructed in
    *                {@link #setContentIntentIfPresent}
    */
   static void sendNotificationOpenedBroadcast(Context context, Intent intent) {
@@ -800,7 +782,7 @@ public class AppboyNotificationUtils {
    * Logs a push notification open.
    *
    * @param context
-   * @param intent  the internal notification clicked intent constructed in
+   * @param intent the internal notification clicked intent constructed in
    *                {@link #setContentIntentIfPresent}
    */
   private static void logNotificationOpened(Context context, Intent intent) {

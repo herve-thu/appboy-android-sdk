@@ -11,10 +11,8 @@ Successful marketing automation is essential to the future of your mobile app. A
 ## Components
 
 - `android-sdk-ui` - the Appboy SDK user interface containing the Appboy jar.
-- `wear-library` - a small library to support the Appboy SDK on Android Wear devices.
 - `droidboy` - a sample application which demonstrates how to use Appboy.
 - `hello-appboy` - a sample gradle application demonstrating a simple use case of Appboy.
-- `wearboy` - a sample Android Wear app demonstrating Appboy SDK support for Wear devices.
 - `android-sdk-unity` - a library that enables Appboy SDK integrations on Unity.
 
 ## Building and Running the Sample Applications
@@ -22,14 +20,7 @@ Successful marketing automation is essential to the future of your mobile app. A
 1. Make sure the ANDROID_HOME environment variable is set to the location of your installed SDK or you have a
    local.properties file which defines the sdk.dir property. You can check this by running `echo $ANDROID_HOME`, or
    `echo %ANDROID_HOME%` in Windows.
-2. When you run your first build, the android-sdk-manager plugin will automatically install the proper Android build
-   tools, setup your Android Support Library repository, etc. If you don't have your ANDROID_HOME variable properly set
-   or don't have a local.properties folder with a valid sdk.dir folder, this plugin will also install the base SDK for
-   you. Other than a bit of wasted disk space, it isn't bad if the plugin re-installs your Android SDK (it'll put it in
-   `~/.android-sdk` if you want to move it or delete it later), but either way, it's cleaner to have your ANDROID_HOME
-   properly set before running the build. See the [plugin repo](https://github.com/JakeWharton/sdk-manager-plugin) for
-   more information.
-3. To assemble the UI library and the Droidboy APK, run `./gradlew assemble` (use gradlew.bat on Windows). You can find
+2. To assemble the UI library and the Droidboy APK, run `./gradlew assemble` (use gradlew.bat on Windows). You can find
    assembled files in the `build/` subdirectories of the `android-sdk-ui` and `droidboy` projects. You can also
    use the `installDebug` task if you have a device or emulator connected to adb and want to run Droidboy or Hello-Appboy.
    You can see other available tasks by running `./gradlew tasks`.
@@ -46,7 +37,7 @@ repositories {
 
 ```
 dependencies {
-   compile 'com.appboy:android-sdk-ui:1.17.+'
+   compile 'com.appboy:android-sdk-ui:2.0.+'
    ...
 }
 ```
@@ -66,18 +57,9 @@ repositories {
 
 ```
 dependencies {
-  compile 'com.appboy:android-sdk-ui:1.17.+'
+  compile 'com.appboy:android-sdk-ui:2.0.+'
 }
 ```
-
-## Using wear-library in Your Android Wear App
-We have included a sample Wear app in this project. As a reference, the main app is Droidboy and the Wear App is wearboy.
-
-1. Copy the wear-library module into your project.
-2. Register the AppboyWearableListenerService in your main app's manifest (see Droidboy's manifest.xml).
-3. Obtain an instance of the AppboyWearableAdapter in your Wear app to use a subset of methods of the Appboy singleton. See the Wearboy sample app.
-4. The feature "android.hardware.type.watch" must be declared in your Wear app's manifest for sdk actions to be properly logged from the watch.
-
 
 ## Version Support
 

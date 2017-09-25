@@ -40,8 +40,8 @@ public class AppboyNotificationFactory implements IAppboyNotificationFactory {
                                                 Context context, Bundle notificationExtras, Bundle appboyExtras) {
 
     // We build up the notification by setting values if they are present in the extras and supported
-    // on the device.  The notification building is currently order/combination independent, but
-    // the addition of new RemoteViews options could mean that some methods conflict/overwrite.  For clarity
+    // on the device. The notification building is currently order/combination independent, but
+    // the addition of new RemoteViews options could mean that some methods conflict/overwrite. For clarity
     // we build the notification up in the order that each feature was supported.
 
     NotificationCompat.Builder notificationBuilder =
@@ -82,8 +82,6 @@ public class AppboyNotificationFactory implements IAppboyNotificationFactory {
     AppboyNotificationUtils.setVisibilityIfPresentAndSupported(notificationBuilder, notificationExtras);
     AppboyNotificationUtils.setPublicVersionIfPresentAndSupported(context, appConfigurationProvider, notificationBuilder, notificationExtras);
 
-    // Android Wear Notification support
-    AppboyWearableNotificationUtils.setWearableNotificationFeaturesIfPresentAndSupported(context, notificationBuilder, notificationExtras);
     return notificationBuilder.build();
   }
 }
